@@ -1,0 +1,11 @@
+target/
+.mvn/
+bin/
+node_modules/
+dist/
+.angular/
+.idea/
+*.class
+*.jar
+*.swp
+.DS_Store
