@@ -1,0 +1,85 @@
+<div class="container">
+  <h1>Calculadora de ROI - Logging Lost Ark</h1>
+  
+  <form [formGroup]="roiForm" (ngSubmit)="onSubmit()">
+    <div class="sections">
+      <div class="section" formGroupName="inventory">
+        <h2>Seu Inventário (Unidades)</h2>
+        <div class="field">
+          <label>Sturdy Timber:</label>
+          <input type="number" formControlName="sturdyCount">
+        </div>
+        <div class="field">
+          <label>Abidos Timber:</label>
+          <input type="number" formControlName="abidosCount">
+        </div>
+        <div class="field">
+          <label>Tender Timber:</label>
+          <input type="number" formControlName="tenderCount">
+        </div>
+        <div class="field">
+          <label>Timber Comum:</label>
+          <input type="number" formControlName="timberCount">
+        </div>
+      </div>
+
+      <div class="section" formGroupName="prices">
+        <h2>Preços de Mercado (100x Mat / 10x Fusion)</h2>
+        <div class="field">
+          <label>Preço Sturdy (100x):</label>
+          <input type="number" formControlName="sturdyPrice">
+        </div>
+        <div class="field">
+          <label>Preço Abidos (100x):</label>
+          <input type="number" formControlName="abidosPrice">
+        </div>
+        <div class="field">
+          <label>Preço Tender (100x):</label>
+          <input type="number" formControlName="tenderPrice">
+        </div>
+        <div class="field">
+          <label>Preço Timber (100x):</label>
+          <input type="number" formControlName="timberPrice">
+        </div>
+        <hr>
+        <div class="field">
+          <label>Abidos Fusion (10x):</label>
+          <input type="number" formControlName="fusionPrice">
+        </div>
+        <div class="field">
+          <label>Superior Fusion (10x):</label>
+          <input type="number" formControlName="superiorFusionPrice">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" [disabled]="roiForm.invalid || loading">Calcular Melhor ROI</button>
+  </form>
+
+  <div *ngIf="loading" class="loading">Calculando cenários...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <div *ngIf="result" class="results">
+    <h2>Resultados Comparativos (Líquido)</h2>
+    <div class="best-scenario">
+      Caminho mais rentável: <strong>{{ result.bestScenarioName }}</strong>
+    </div>
+
+    <div class="scenarios-grid">
+      <div *ngFor="let scenario of result.scenarios" 
+           [class.best]="scenario.name === result.bestScenarioName" 
+           class="scenario-card">
+        <h3>{{ scenario.name }}</h3>
+        <p class="profit" [ngClass]="scenario.netProfit >= 0 ? 'profit-positive' : 'profit-negative'">
+          {{ scenario.netProfit | number:'1.0-0' }} Gold
+        </p>
+        <p class="desc">{{ scenario.description }}</p>
+        <ul *ngIf="scenario.details" class="details-list">
+           <li *ngFor="let detail of scenario.details | keyvalue">
+             {{ detail.key }}: {{ detail.value }}
+           </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
