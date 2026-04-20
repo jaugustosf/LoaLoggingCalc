@@ -6,5 +6,6 @@ public record MarketPrices(
     Double tenderPrice,
     Double timberPrice,
     Double fusionPrice,
-    Double superiorFusionPrice
+    Double superiorFusionPrice,
+    Double costReductionPercentage
 ) {}

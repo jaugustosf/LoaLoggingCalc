@@ -42,56 +42,141 @@ public class CalculationService {
     private ScenarioResult calculateBruteSale(CalculationRequest request) {
         UserInventory inv = request.inventory();
         MarketPrices prices = request.prices();
-        double revenue = (nvl(inv.sturdyCount()) * nvl(prices.sturdyPrice()) / 100.0) +
-                         (nvl(inv.abidosCount()) * nvl(prices.abidosPrice()) / 100.0) +
-                         (nvl(inv.tenderCount()) * nvl(prices.tenderPrice()) / 100.0) +
-                         (nvl(inv.timberCount()) * nvl(prices.timberPrice()) / 100.0);
-        return new ScenarioResult("Cenário A: Venda Total", revenue * MARKET_TAX, 
-            "Valor líquido de todo o inventário (Patrimônio).", 
-            Map.of("Total Itens", (nvl(inv.sturdyCount()) + nvl(inv.abidosCount()) + nvl(inv.tenderCount()) + nvl(inv.timberCount()))));
+        
+        double sturdyVal = (nvl(inv.sturdyCount()) * nvl(prices.sturdyPrice()) / 100.0) * MARKET_TAX;
+        double abidosVal = (nvl(inv.abidosCount()) * nvl(prices.abidosPrice()) / 100.0) * MARKET_TAX;
+        double tenderVal = (nvl(inv.tenderCount()) * nvl(prices.tenderPrice()) / 100.0) * MARKET_TAX;
+        double timberVal = (nvl(inv.timberCount()) * nvl(prices.timberPrice()) / 100.0) * MARKET_TAX;
+        
+        double totalRevenue = sturdyVal + abidosVal + tenderVal + timberVal;
+
+        Map<String, Long> details = new LinkedHashMap<>();
+        details.put("Valor líquido Sturdy (Gold)", (long)sturdyVal);
+        details.put("Valor líquido Abidos Timber (Gold)", (long)abidosVal);
+        details.put("Valor líquido Tender (Gold)", (long)tenderVal);
+        details.put("Valor líquido Timber Comum (Gold)", (long)timberVal);
+        details.put("Total de itens processados", (nvl(inv.sturdyCount()) + nvl(inv.abidosCount()) + nvl(inv.tenderCount()) + nvl(inv.timberCount())));
+
+        return new ScenarioResult("Cenário A: Venda Total Bruta", totalRevenue, 
+            "Valor líquido se você vender todo o seu inventário agora no mercado.", details);
     }
 
     private ScenarioResult calculateSturdyConversionIsolated(CalculationRequest request) {
         UserInventory inv = request.inventory();
         MarketPrices prices = request.prices();
-        long totalTimber = nvl(inv.timberCount()) + (nvl(inv.sturdyCount()) * 10);
-        long craftCount = Math.min(nvl(inv.abidosCount()) / abidosMatAbidos, Math.min(nvl(inv.tenderCount()) / abidosMatTender, totalTimber / abidosMatTimber));
-        if (craftCount <= 0) return new ScenarioResult("Cenário B: Otimização Sturdy", 0, "Materiais insuficientes.", Map.of());
-        double netProfit = ((craftCount * nvl(prices.fusionPrice())) * MARKET_TAX) - (craftCount * abidosCost);
         
-        Map<String, Long> details = new LinkedHashMap<>();
-        details.put("Total de Abidos Fusion produzidos", craftCount * 10);
-        details.put("Custo de Fabricação (Gold)", (long)craftCount * abidosCost);
-        details.put("Madeira Comum gerada (1:10)", nvl(inv.sturdyCount()) * 10);
+        double reduction = 1.0 - (nvl(prices.costReductionPercentage()) / 100.0);
+        double effectiveAbidosCost = abidosCost * reduction;
+        double effectiveSuperiorCost = superiorCost * reduction;
 
-        return new ScenarioResult("Cenário B: Otimização Sturdy", netProfit, "Maximiza craft de Abidos Fusion convertendo Sturdies (1:10).", details);
+        // 1. Converter Sturdy para Timber (1:10) conforme solicitado
+        long totalTimber = nvl(inv.timberCount()) + (nvl(inv.sturdyCount()) * 10);
+        long totalTender = nvl(inv.tenderCount());
+        long totalAbidos = nvl(inv.abidosCount());
+
+        // 2. Lógica de Troca (Dust/NPC): 
+        // Em vez de compra, vamos considerar que o usuário "mói" o excesso para pegar o que falta.
+        // Como o Abidos Timber é o gargalo, vamos ver quanto Timber/Tender sobram e converter em Abidos Timber.
+        // Taxa média de conversão via NPC (aproximada): 80 unidades de comum/incomum valem ~10 de épico (Abidos Timber)
+        
+        // Vamos tentar equilibrar os materiais para maximizar crafts
+        // Superior Fusion precisa de: 43 Abidos Timber, 59 Tender, 112 Timber
+        
+        long superiorCrafts = 0;
+        long tempAbidos = totalAbidos;
+        long tempTender = totalTender;
+        long tempTimber = totalTimber;
+
+        // Loop de simulação de craft com troca interna
+        while (true) {
+            // Se falta Abidos Timber, tenta converter excesso de Timber (proporção 10:1)
+            if (tempAbidos < superiorMatAbidos && tempTimber > (superiorMatTimber + 100)) {
+                tempTimber -= 100;
+                tempAbidos += 10;
+                continue;
+            }
+            // Se falta Abidos Timber, tenta converter excesso de Tender (proporção 5:1)
+            if (tempAbidos < superiorMatAbidos && tempTender > (superiorMatTender + 50)) {
+                tempTender -= 50;
+                tempAbidos += 10;
+                continue;
+            }
+
+            if (tempAbidos >= superiorMatAbidos && tempTender >= superiorMatTender && tempTimber >= superiorMatTimber) {
+                superiorCrafts++;
+                tempAbidos -= superiorMatAbidos;
+                tempTender -= superiorMatTender;
+                tempTimber -= superiorMatTimber;
+            } else {
+                break;
+            }
+        }
+
+        // Repetir para Abidos Fusion com o que sobrou
+        long abidosCrafts = 0;
+        while (true) {
+            if (tempAbidos < abidosMatAbidos && tempTimber > (abidosMatTimber + 100)) {
+                tempTimber -= 100;
+                tempAbidos += 10;
+                continue;
+            }
+            if (tempAbidos >= abidosMatAbidos && tempTender >= abidosMatTender && tempTimber >= abidosMatTimber) {
+                abidosCrafts++;
+                tempAbidos -= abidosMatAbidos;
+                tempTender -= abidosMatTender;
+                tempTimber -= abidosMatTimber;
+            } else {
+                break;
+            }
+        }
+
+        double revenueSuperior = (superiorCrafts * 10 * nvl(prices.superiorFusionPrice()) / 10.0) * MARKET_TAX;
+        double revenueAbidos = (abidosCrafts * 10 * nvl(prices.fusionPrice()) / 10.0) * MARKET_TAX;
+        double totalCost = (superiorCrafts * effectiveSuperiorCost) + (abidosCrafts * effectiveAbidosCost);
+        double netProfit = (revenueSuperior + revenueAbidos) - totalCost;
+
+        Map<String, Long> details = new LinkedHashMap<>();
+        details.put("Superior Fusion Produzidos", superiorCrafts * 10);
+        details.put("Abidos Fusion Produzidos", abidosCrafts * 10);
+        details.put("Valor Total das Vendas (Líquido)", (long)(revenueSuperior + revenueAbidos));
+        details.put("Custo de Fabricação (Gold)", (long)totalCost);
+        details.put("Abidos Timber 'criados' via troca", (long)((superiorCrafts * superiorMatAbidos + abidosCrafts * abidosMatAbidos) - totalAbidos));
+
+        return new ScenarioResult("Cenário B: Craft via Trocas (Dust)", netProfit, 
+            "Calcula o máximo de fusions trocando materiais excedentes no NPC (sem comprar nada).", details);
     }
 
     private ScenarioResult calculateAbidosFusionIsolated(CalculationRequest request) {
         UserInventory inv = request.inventory();
         MarketPrices prices = request.prices();
+        double reduction = 1.0 - (nvl(prices.costReductionPercentage()) / 100.0);
+        double effectiveCost = abidosCost * reduction;
+
         long craftCount = Math.min(nvl(inv.abidosCount()) / abidosMatAbidos, Math.min(nvl(inv.tenderCount()) / abidosMatTender, nvl(inv.timberCount()) / abidosMatTimber));
-        double netProfit = (craftCount > 0) ? (((craftCount * nvl(prices.fusionPrice())) * MARKET_TAX) - (craftCount * abidosCost)) : 0;
+        double netProfit = (craftCount > 0) ? (((craftCount * nvl(prices.fusionPrice())) * MARKET_TAX) - (craftCount * effectiveCost)) : 0;
         
         Map<String, Long> details = new LinkedHashMap<>();
         if (craftCount > 0) {
             details.put("Total de Abidos Fusion produzidos", craftCount * 10);
-            details.put("Custo de Fabricação (Gold)", (long)craftCount * abidosCost);
+            details.put("Custo de Fabricação (Gold)", (long)(craftCount * effectiveCost));
         }
-        return new ScenarioResult("Cenário C: Abidos Fusion", netProfit, "Lucro isolado do craft de Abidos Fusion.", details);
+        return new ScenarioResult("Cenário C: Craft Direto Abidos (Sem Trocas)", netProfit, "Lucro usando apenas materiais que você já tem em mãos, sem trocas ou conversões.", details);
     }
 
     private ScenarioResult calculateSuperiorFusionIsolated(CalculationRequest request) {
         UserInventory inv = request.inventory();
         MarketPrices prices = request.prices();
+        double reduction = 1.0 - (nvl(prices.costReductionPercentage()) / 100.0);
+        double effectiveCost = superiorCost * reduction;
+
         long craftCount = Math.min(nvl(inv.abidosCount()) / superiorMatAbidos, Math.min(nvl(inv.tenderCount()) / superiorMatTender, nvl(inv.timberCount()) / superiorMatTimber));
-        double netProfit = (craftCount > 0) ? (((craftCount * nvl(prices.superiorFusionPrice())) * MARKET_TAX) - (craftCount * superiorCost)) : 0;
+        double netProfit = (craftCount > 0) ? (((craftCount * nvl(prices.superiorFusionPrice())) * MARKET_TAX) - (craftCount * effectiveCost)) : 0;
 
         Map<String, Long> details = new LinkedHashMap<>();
         if (craftCount > 0) {
             details.put("Total de Superior Fusion produzidos", craftCount * 10);
-            details.put("Custo de Fabricação (Gold)", (long)craftCount * superiorCost);
+            details.put("Custo de Fabricação (Gold)", (long)(craftCount * effectiveCost));
         }
-        return new ScenarioResult("Cenário C: Superior Fusion", netProfit, "Lucro isolado do craft de Superior Abidos Fusion.", details);
+        return new ScenarioResult("Cenário C: Craft Direto Superior (Sem Trocas)", netProfit, "Lucro usando apenas materiais que você já tem em mãos, sem trocas ou conversões.", details);
     }
 }
